@@ -1,9 +1,23 @@
-# atproto shenanigans
+# at
 
-A typescript/node CLI client for at protocol (bluesky).
+A typescript/node CLI client for [at protocol](https://atproto.com/) (bluesky).
+
+This exposes a CLI tool, `at`, that you can use to make requests to
+your [DID document](https://atproto.com/specs/did).
 
 <details><summary><h2>Contents</h2></summary>
+
 <!-- toc -->
+
+- [Install](#install)
+- [Use](#use)
+  * [`aka` command](#aka-command)
+  * [Example](#example)
+  * [Using a custom PDS](#using-a-custom-pds)
+- [How it works](#how-it-works)
+
+<!-- tocstop -->
+
 </details>
 
 ## Install
@@ -14,12 +28,15 @@ npm i @substrate-system/at
 
 ## Use
 
-### Add a URL to your DID's `alsoKnownAs` property
+### `aka` command
 
-The `aka` command lets you link external URLs to your Bluesky DID document. This is useful for connecting your Bluesky identity to other online profiles like GitHub, personal websites, or other platforms.
+Add a URL to your DID's `alsoKnownAs` property.
+
+The `aka` command lets you link external URLs, like Github,
+to your Bluesky DID document.
 
 If you did not install this glabally via `npm i -g @substrate-system/at`,
-then use `npx` to execute the program.
+then use `npx` to execute it.
 
 ```bash
 npx at aka <handle> <URL> [--pds <custom-pds>]
@@ -67,8 +84,8 @@ at aka alice.example.com https://alice.com --pds https://pds.example.com
 ## How it works
 
 The AT Protocol uses [DID (Decentralized Identifier)](https://atproto.com/specs/did)
-documents to represent user identities. Each DID document can include an
+documents as user identity. Each DID can include an
 `alsoKnownAs` field that links to other identifiers or URLs.
 
-This tool uses the [@atproto/api](https://www.npmjs.com/package/@atproto/api)
-client.
+This uses the
+[@atproto/api](https://www.npmjs.com/package/@atproto/api) client.
