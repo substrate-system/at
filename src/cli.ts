@@ -12,6 +12,11 @@ interface AkaArgs {
     pds?:string
 }
 
+interface DidArgs {
+    handle:string
+    pds?:string
+}
+
 async function akaCommand (args:AkaArgs) {
     const { handle, url, pds = 'https://bsky.social' } = args
 
@@ -76,6 +81,47 @@ async function akaCommand (args:AkaArgs) {
     }
 }
 
+async function didCommand (args:DidArgs) {
+    let { handle } = args
+    const { pds = 'https://bsky.social' } = args
+
+    // Strip '@' prefix if present
+    handle = handle.startsWith('@') ? handle.slice(1) : handle
+
+    try {
+        // Create an agent (no login needed for public operations)
+        const agent = new AtpAgent({ service: pds })
+
+        // Resolve handle to DID
+        const response = await agent.resolveHandle({ handle })
+        const did = response.data.did
+
+        // Fetch DID document
+        let didDoc
+        if (did.startsWith('did:plc:')) {
+            // Fetch from PLC directory
+            const plcResponse = await fetch(`https://plc.directory/${did}`)
+            didDoc = await plcResponse.json()
+        } else if (did.startsWith('did:web:')) {
+            // Handle did:web
+            const webPart = did.replace('did:web:', '').replace(':', '/')
+            const webUrl = `https://${webPart}/.well-known/did.json`
+            const webResponse = await fetch(webUrl)
+            didDoc = await webResponse.json()
+        } else {
+            throw new Error(`Unsupported DID method: ${did}`)
+        }
+
+        console.log(JSON.stringify(didDoc, null, 2))
+    } catch (err) {
+        console.error(chalk.red.bold('\nError...'), err instanceof Error ?
+            err.message :
+            String(err)
+        )
+        process.exit(1)
+    }
+}
+
 yargs(hideBin(process.argv))
     .command(
         'aka <handle> <URL>',
@@ -104,6 +150,32 @@ yargs(hideBin(process.argv))
             akaCommand({
                 handle: argv.handle as string,
                 url: argv.url,
+                pds: argv.pds as string
+            }).catch((error) => {
+                console.error(chalk.red.bold('Unexpected error:'), error)
+                process.exit(1)
+            })
+        }
+    )
+    .command(
+        'did <handle>',
+        'Get the DID document for a given handle',
+        (yargs) => {
+            return yargs
+                .positional('handle', {
+                    describe: 'A Bluesky handle (e.g., nichoth.com or @nichoth.com)',
+                    type: 'string',
+                    demandOption: true
+                })
+                .option('pds', {
+                    describe: 'Custom PDS server URL for handle resolution',
+                    type: 'string',
+                    default: 'https://bsky.social'
+                })
+        },
+        (argv) => {
+            didCommand({
+                handle: argv.handle as string,
                 pds: argv.pds as string
             }).catch((error) => {
                 console.error(chalk.red.bold('Unexpected error:'), error)

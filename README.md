@@ -12,8 +12,11 @@ your [DID document](https://atproto.com/specs/did).
 - [Install](#install)
 - [Use](#use)
   * [`aka` command](#aka-command)
-  * [Example](#example)
-  * [Using a custom PDS](#using-a-custom-pds)
+    + [Example](#example)
+    + [Using a custom PDS](#using-a-custom-pds)
+  * [`did` command](#did-command)
+    + [Arguments](#arguments)
+    + [Example](#example-1)
 - [How it works](#how-it-works)
 
 <!-- tocstop -->
@@ -49,7 +52,7 @@ npx at aka <handle> <URL> [--pds <custom-pds>]
 - `--pds` - (Optional) Custom PDS server URL. Defaults to `https://bsky.social`
 
 
-### Example
+#### Example
 
 Link to your github profile.
 
@@ -73,13 +76,86 @@ The resulting `alsoKnownAs` array in your DID document will contain:
 ]
 ```
 
-### Using a custom PDS
+#### Using a custom PDS
 
 Pass in the `--pds` argument with PDS URL.
 
 ```sh
 at aka alice.example.com https://alice.com --pds https://pds.example.com
 ```
+
+### `did` command
+
+Fetch the DID document for a handle.
+
+```
+npx at did <handle> [--pds <custom-pds>]
+```
+
+**Arguments**
+
+- `<handle>` - A Bluesky handle (e.g., `alice.bsky.social` or `@alice.bsky.social`)
+- `--pds` - (Optional) Custom PDS server URL for handle resolution. Defaults to `https://bsky.social`
+
+#### Example
+
+Get a DID document for `@nichoth.com`:
+
+```sh
+npx at did @nichoth.com
+```
+
+```js
+{
+  "@context": [
+    "https://www.w3.org/ns/did/v1",
+    "https://w3id.org/security/multikey/v1",
+    "https://w3id.org/security/suites/secp256k1-2019/v1"
+  ],
+  "id": "did:plc:s53e6k6sirobjtz5s6vdddwr",
+  "alsoKnownAs": [
+    "at://nichoth.com",
+    "https://github.com/nichoth/"
+  ],
+  "verificationMethod": [
+    {
+      "id": "did:plc:s53e6k6sirobjtz5s6vdddwr#atproto",
+      "type": "Multikey",
+      "controller": "did:plc:s53e6k6sirobjtz5s6vdddwr",
+      "publicKeyMultibase": "zQ3shnSayXqCvnetx9S5BaHVEXPovHqpKcXwK2oRwAWPVKmdz"
+    }
+  ],
+  "service": [
+    {
+      "id": "#atproto_pds",
+      "type": "AtprotoPersonalDataServer",
+      "serviceEndpoint": "https://lionsmane.us-east.host.bsky.network"
+    }
+  ]
+}
+```
+
+Extract fields using `jq`:
+
+```sh
+# Get the DID string
+npx at did alice.bsky.social | jq -r '.id'
+
+# Get the alsoKnownAs array
+npx at did alice.bsky.social | jq '.alsoKnownAs'
+
+# Get the PDS endpoint
+npx at did alice.bsky.social | jq -r '.service[] | select(.type == "AtprotoPersonalDataServer") | .serviceEndpoint'
+```
+
+**Output**
+
+Returns a JSON object containing:
+
+- `id` - The DID identifier
+- `alsoKnownAs` - Array of alternative identifiers
+- `verificationMethod` - Cryptographic keys for the identity
+- `service` - Service endpoints (like the PDS server)
 
 ## How it works
 
