@@ -22,7 +22,6 @@ your [DID document](https://atproto.com/specs/did).
     + [Example](#example)
     + [Using a custom PDS](#using-a-custom-pds)
   * [`did` command](#did-command)
-    + [Arguments](#arguments)
     + [Example](#example-1)
 - [How it works](#how-it-works)
 
