@@ -1,5 +1,8 @@
 # at
 
+[![tests](https://img.shields.io/github/actions/workflow/status/substrate-system/at/nodejs.yml?style=flat-square)](https://github.com/substrate-system/at/actions/workflows/nodejs.yml)
+
+
 A typescript/node CLI client for [at protocol](https://atproto.com/) (bluesky).
 
 This exposes a CLI tool, `at`, that you can use to make requests to
