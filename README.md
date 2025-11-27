@@ -42,7 +42,9 @@ npm i @substrate-system/at
 Add a URL to your DID's `alsoKnownAs` property.
 
 The `aka` command lets you link external URLs, like Github,
-to your Bluesky DID document.
+to your Bluesky DID document. See
+[verify.aviary.domains](https://verify.aviary.domains/did/did:plc:cbkjy5n7bk3ax2wplmtjofq2)
+to lookup your DID document and see the also known as values.
 
 If you did not install this glabally via `npm i -g @substrate-system/at`,
 then use `npx` to execute it.
@@ -146,6 +148,7 @@ Extract fields using `jq`:
 ```sh
 # Get the DID string
 npx at did alice.bsky.social | jq -r '.id'
+# => did:plc:vdjlpwlhbnug4fnjodwr3vzh
 
 # Get the alsoKnownAs array
 npx at did alice.bsky.social | jq '.alsoKnownAs'
