@@ -22,6 +22,7 @@ your [DID document](https://atproto.com/specs/did).
     + [Example](#example)
     + [Using a custom PDS](#using-a-custom-pds)
   * [`did` command](#did-command)
+    + [Arguments](#arguments)
     + [Example](#example-1)
 - [How it works](#how-it-works)
 
@@ -97,13 +98,18 @@ at aka alice.example.com https://alice.com --pds https://pds.example.com
 Fetch the DID document for a handle.
 
 ```
-npx at did <handle> [--pds <custom-pds>]
+npx at did <handle> [--pds <custom-pds>] [--log]
 ```
 
-**Arguments**
+#### Arguments
 
-- `<handle>` - A Bluesky handle (e.g., `alice.bsky.social` or `@alice.bsky.social`)
-- `--pds` - (Optional) Custom PDS server URL for handle resolution. Defaults to `https://bsky.social`
+- `<handle>` - A Bluesky handle
+  (e.g., `alice.bsky.social` or `@alice.bsky.social`)
+- `--pds` - (Optional) Custom PDS server URL for handle resolution.
+  Defaults to `https://bsky.social`
+- `--log`, `-l` - (Optional) Fetch the audit log instead of the DID document.
+  Only available for `did:plc:` identifiers, not `did:web`.
+
 
 #### Example
 
@@ -165,6 +171,33 @@ Returns a JSON object containing:
 - `alsoKnownAs` - Array of alternative identifiers
 - `verificationMethod` - Cryptographic keys for the identity
 - `service` - Service endpoints (like the PDS server)
+
+**Audit Log**
+
+Use the `--log` or `-l` flag to fetch the audit log for a DID from the PLC directory. This shows the history of changes to the DID document:
+
+```sh
+npx at did @nichoth.com --log
+```
+
+The audit log returns an array of operations with their CIDs and timestamps:
+
+```js
+[
+  {
+    "cid": "bafyreid...",
+    "nullified": false,
+    "operation": {
+      "type": "plc_operation",
+      "services": { ... },
+      "alsoKnownAs": [...],
+      // ... other operation details
+    },
+    "createdAt": "2024-01-15T10:30:00.000Z"
+  },
+  // ... previous operations
+]
+```
 
 ## How it works
 

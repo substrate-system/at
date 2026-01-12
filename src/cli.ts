@@ -15,11 +15,12 @@ interface AkaArgs {
 interface DidArgs {
     handle:string
     pds?:string
+    log?:boolean
 }
 
 async function didCommand (args:DidArgs) {
     let { handle } = args
-    const { pds = 'https://bsky.social' } = args
+    const { pds = 'https://bsky.social', log = false } = args
 
     // Strip '@' prefix if present
     handle = handle.startsWith('@') ? handle.slice(1) : handle
@@ -31,6 +32,16 @@ async function didCommand (args:DidArgs) {
         // Resolve handle to DID
         const response = await agent.resolveHandle({ handle })
         const did = response.data.did
+
+        // If log flag is set, fetch and print the audit log
+        if (log) {
+            if (!did.startsWith('did:plc:')) {
+                throw new Error('Audit log is only available for did:plc: identifiers')
+            }
+            const logData = await getDidLog(did)
+            console.log(JSON.stringify(logData, null, 2))
+            return
+        }
 
         // Fetch DID document
         let didDoc
@@ -108,11 +119,18 @@ yargs(hideBin(process.argv))
                     type: 'string',
                     default: 'https://bsky.social'
                 })
+                .option('log', {
+                    alias: 'l',
+                    describe: 'Fetch audit log from PLC directory',
+                    type: 'boolean',
+                    default: false
+                })
         },
         (argv) => {
             didCommand({
                 handle: argv.handle as string,
-                pds: argv.pds as string
+                pds: argv.pds as string,
+                log: argv.log as boolean
             }).catch((error) => {
                 console.error(chalk.red.bold('Unexpected error:'), error)
                 process.exit(1)
@@ -189,4 +207,18 @@ async function akaCommand (args:AkaArgs) {
         )
         process.exit(1)
     }
+}
+
+async function getDidLog (did:string):Promise<Record<string, any>> {
+    // The PLC directory provides a log endpoint:
+    // https://plc.directory/{did}/log/audit
+    const plcUrl = 'https://plc.directory'
+    const response = await fetch(`${plcUrl}/${did}/log/audit`)
+
+    if (!response.ok) {
+        throw new Error(`Failed to fetch log: ${response.statusText}`)
+    }
+
+    const log = await response.json() as Record<string, any>
+    return log
 }

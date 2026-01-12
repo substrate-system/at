@@ -65,6 +65,59 @@ test('did command with invalid handle shows error', async t => {
         'should show error message')
 })
 
+test('did command with --log flag fetches audit log', async t => {
+    const result = await runCLI(['did', handle, '--log'])
+
+    t.equal(result.code, 0, 'command should exit with code 0')
+
+    // Should output valid JSON
+    try {
+        const log = JSON.parse(result.stdout)
+        t.ok(Array.isArray(log), 'audit log should be an array')
+        if (log.length > 0) {
+            t.ok(log[0].cid, 'log entries should have a cid field')
+            t.ok(log[0].operation, 'log entries should have an operation field')
+        }
+    } catch (_err) {
+        t.fail('Should output valid JSON audit log')
+    }
+})
+
+test('did command with -l flag (short form) fetches audit log', async t => {
+    const result = await runCLI(['did', handle, '-l'])
+
+    t.equal(result.code, 0, 'command should exit with code 0')
+
+    // Should output valid JSON
+    try {
+        const log = JSON.parse(result.stdout)
+        t.ok(Array.isArray(log), 'audit log should be an array')
+    } catch (_err) {
+        t.fail('Should output valid JSON audit log')
+    }
+})
+
+test('did command --log shows different output than regular did', async t => {
+    const regularResult = await runCLI(['did', handle])
+    const logResult = await runCLI(['did', handle, '--log'])
+
+    t.equal(regularResult.code, 0, 'regular command should succeed')
+    t.equal(logResult.code, 0, 'log command should succeed')
+
+    const regularDoc = JSON.parse(regularResult.stdout)
+    const logDoc = JSON.parse(logResult.stdout)
+
+    // Regular output has 'id' field (DID document)
+    t.ok(regularDoc.id, 'regular output should be a DID document with id')
+
+    // Log output is an array
+    t.ok(Array.isArray(logDoc), 'log output should be an array')
+
+    // They should be different
+    t.notEqual(regularResult.stdout, logResult.stdout,
+        'log and regular output should be different')
+})
+
 // Test the `aka` command
 test('aka command requires handle and URL arguments', async t => {
     const result = await runCLI(['aka'])
