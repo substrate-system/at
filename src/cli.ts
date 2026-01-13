@@ -54,6 +54,12 @@ yargs(hideBin(process.argv))
                     type: 'string',
                     default: 'https://bsky.social'
                 })
+                .option('remove', {
+                    alias: 'rm',
+                    type: 'string',
+                    describe: 'Remove the given rotation key. The key should ' +
+                        'be in multikey format (the DID string is fine).'
+                })
                 .option('format', {
                     alias: 'f',
                     describe: 'The output format for the generated keypair. ' +
