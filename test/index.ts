@@ -159,9 +159,12 @@ test('keys command with json format outputs both keys', async t => {
         t.ok(keys.publicKey, 'should have publicKey field')
         t.ok(keys.privateKey, 'should have privateKey field')
 
-        // Public key is compressed (33 bytes = 66 hex chars, starts with 02 or 03)
-        t.ok(/^0[23][0-9a-f]{64}$/.test(keys.publicKey),
-            'publicKey should be valid compressed secp256k1 key')
+        // Public key is encoded in multicodec format (secp256k1-pub with base58btc)
+        // Should start with 'z' and be base58btc encoded
+        t.ok(keys.publicKey.startsWith('z'),
+            'publicKey should start with z (base58btc prefix)')
+        t.ok(/^z[1-9A-HJ-NP-Za-km-z]+$/.test(keys.publicKey),
+            'publicKey should be valid base58btc multicodec format')
 
         // Private key is 32 bytes = 64 hex chars
         t.equal(keys.privateKey.length, 64,

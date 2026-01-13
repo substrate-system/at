@@ -3,6 +3,7 @@ import 'dotenv/config'
 import yargs from 'yargs'
 import { Secp256k1Keypair } from '@atproto/crypto'
 import { secp256k1 } from '@noble/curves/secp256k1'
+import * as u from 'uint8arrays'
 import { hideBin } from 'yargs/helpers'
 import { AtpAgent } from '@atproto/api'
 import { password, input } from '@inquirer/prompts'
@@ -246,16 +247,22 @@ async function keysCommand (opts: { format: 'hex' | 'json' | 'jwk' }) {
     const privateKeyBytes = await keypair.export()
     const privateKeyHex = Buffer.from(privateKeyBytes).toString('hex')
 
-    // Get public key as hex string
-    const publicKeyHex = keypair.publicKeyStr('hex')
-
     if (format === 'hex') {
         // Default: print only private key as hex
         console.log(privateKeyHex)
     } else if (format === 'json') {
         // JSON format with both keys
+        // Public key is multicodec format (secp256k1-pub with base58btc)
+        const publicKeyBytes = keypair.publicKeyBytes()
+        const multicodec = new Uint8Array([0xe7])  // secp256k1-pub
+        const combined = new Uint8Array(multicodec.length + publicKeyBytes.length)
+        combined.set(multicodec, 0)
+        combined.set(publicKeyBytes, multicodec.length)
+        // Encode with base58btc (z prefix)
+        const publicKeyMulticodec = 'z' + u.toString(combined, 'base58btc')
+
         console.log(JSON.stringify({
-            publicKey: publicKeyHex,
+            publicKey: publicKeyMulticodec,
             privateKey: privateKeyHex
         }, null, 2))
     } else if (format === 'jwk') {
