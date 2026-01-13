@@ -7,7 +7,6 @@ import { hideBin } from 'yargs/helpers'
 import { AtpAgent } from '@atproto/api'
 import { password, input } from '@inquirer/prompts'
 import chalk from 'chalk'
-import * as readline from 'node:readline'
 import { type DidDocument } from '@atproto/identity'
 
 interface AkaArgs {
@@ -26,6 +25,7 @@ interface RotationArgs {
     handle:string
     key?:string
     pds?:string
+    format:'hex'|'json'|'jwk'
 }
 
 /**
@@ -45,7 +45,7 @@ yargs(hideBin(process.argv))
                     demandOption: true
                 })
                 .positional('key', {
-                    describe: 'The private key (hex) for the new rotation key. If not provided, will read from stdin',
+                    describe: 'The private key (hex) for the new rotation key. If not provided, a new keypair will be generated',
                     type: 'string'
                 })
                 .option('pds', {
@@ -53,12 +53,21 @@ yargs(hideBin(process.argv))
                     type: 'string',
                     default: 'https://bsky.social'
                 })
+                .option('format', {
+                    alias: 'f',
+                    describe: 'The output format. By default will print ' +
+                        'the private key only as hex',
+                    type: 'string',
+                    choices: ['hex', 'json', 'jwk'],
+                    default: 'hex'
+                })
         },
         (argv) => {
             rotationCommand({
                 handle: argv.handle as string,
                 key: argv.key as string | undefined,
-                pds: argv.pds as string
+                pds: argv.pds as string,
+                format: argv.format as 'hex'|'json'|'jwk'
             }).catch((error) => {
                 console.error(chalk.red.bold('Unexpected error:'), error)
                 process.exit(1)
@@ -329,31 +338,40 @@ async function keysCommand (opts:{ format:'hex'|'json'|'jwk' }) {
     }
 }
 
-async function rotationCommand (args: RotationArgs) {
-    const { handle, key, pds = 'https://bsky.social' } = args
+async function rotationCommand (args:RotationArgs) {
+    const { handle, key, pds = 'https://bsky.social', format } = args
 
     console.log(chalk.blue(`\nAdding rotation key for ${chalk.bold(handle)}`))
     console.log(chalk.gray(`PDS: ${pds}\n`))
 
     try {
-        // Step 1: Get the private key (from argument or stdin)
+        // Step 1: Get or generate the private key
         let privateKeyHex: string
+        let isNewKey = false
+
         if (key) {
             privateKeyHex = key
         } else {
-            console.log(chalk.cyan('Reading private key from stdin...'))
-            privateKeyHex = await readStdin()
-            privateKeyHex = privateKeyHex.trim()
+            // Generate a new keypair
+            console.log(chalk.cyan('Generating new keypair...'))
+            const newKeypair = await Secp256k1Keypair.create({ exportable: true })
+            const privateKeyBytes = await newKeypair.export()
+            privateKeyHex = Buffer.from(privateKeyBytes).toString('hex')
+            isNewKey = true
+            console.log(chalk.green('✓ New keypair generated\n'))
         }
 
         // Validate hex format
         if (!/^[0-9a-f]{64}$/i.test(privateKeyHex)) {
-            throw new Error('Invalid private key format. Expected 64 character hex string')
+            throw new Error('Invalid private key format. Expected 64 ' +
+                'character hex string')
         }
 
         // Step 2: Import the keypair and generate did:key
         console.log(chalk.cyan('Step 1: Generating did:key from private key'))
-        const keypair = await Secp256k1Keypair.import(privateKeyHex, { exportable: false })
+        const keypair = await Secp256k1Keypair.import(privateKeyHex, {
+            exportable: true
+        })
         const didKey = keypair.did()
         console.log(chalk.gray(`New rotation key: ${didKey}\n`))
 
@@ -370,12 +388,14 @@ async function rotationCommand (args: RotationArgs) {
 
         // Step 4: Get current DID credentials
         console.log(chalk.cyan('Step 3: Fetching current DID credentials'))
-        const current = await agent.com.atproto.identity.getRecommendedDidCredentials()
+        const current = await agent.com.atproto.identity
+            .getRecommendedDidCredentials()
         console.log(chalk.green('✓ Retrieved current credentials\n'))
 
         // Check if key already exists
         if (current.data.rotationKeys?.includes(didKey)) {
-            console.log(chalk.yellow('⚠ This rotation key already exists in your DID document'))
+            console.log(chalk.yellow('⚠ This rotation key already exists in ' +
+                'your DID document'))
             return
         }
 
@@ -422,6 +442,43 @@ async function rotationCommand (args: RotationArgs) {
         newRotationKeys.forEach(key => {
             console.log(chalk.gray(`  - ${key}`))
         })
+
+        // Output the keypair in the requested format (only if it's a new key)
+        if (isNewKey) {
+            console.log() // Empty line for separation
+            if (format === 'hex') {
+                // Default: print only private key as hex
+                console.log(privateKeyHex)
+            } else if (format === 'json') {
+                // JSON format with both keys
+                console.log(JSON.stringify({
+                    publicKey: didKey,
+                    privateKey: privateKeyHex
+                }, null, 2))
+            } else if (format === 'jwk') {
+                // Export as JSON Web Key format
+                const privateKeyBytes = Buffer.from(privateKeyHex, 'hex')
+                const compressedPubkey = keypair.publicKeyBytes()
+
+                // Decompress the public key to get x and y coordinates
+                const point = secp256k1.Point.fromHex(compressedPubkey)
+                const uncompressedPubkey = point.toRawBytes(false)
+
+                // Uncompressed key format: [0x04, x (32 bytes), y (32 bytes)]
+                const x = uncompressedPubkey.slice(1, 33)
+                const y = uncompressedPubkey.slice(33, 65)
+
+                const jwk = {
+                    kty: 'EC',
+                    crv: 'secp256k1',
+                    x: Buffer.from(x).toString('base64url'),
+                    y: Buffer.from(y).toString('base64url'),
+                    d: Buffer.from(privateKeyBytes).toString('base64url'),
+                    key_ops: ['sign']
+                }
+                console.log(JSON.stringify(jwk, null, 2))
+            }
+        }
     } catch (err) {
         console.error(chalk.red.bold('\nError...'), err instanceof Error ?
             err.message :
@@ -429,28 +486,6 @@ async function rotationCommand (args: RotationArgs) {
         )
         process.exit(1)
     }
-}
-
-/**
- * Read from stdin until EOF
- */
-async function readStdin (): Promise<string> {
-    return new Promise((resolve) => {
-        const rl = readline.createInterface({
-            input: process.stdin,
-            output: process.stdout,
-            terminal: false
-        })
-
-        let data = ''
-        rl.on('line', (line) => {
-            data += line
-        })
-
-        rl.on('close', () => {
-            resolve(data)
-        })
-    })
 }
 
 async function getDidLog (did:string):Promise<Record<string, any>[]> {

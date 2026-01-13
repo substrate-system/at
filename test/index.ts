@@ -240,8 +240,12 @@ test('rotation command shows help with --help flag', async t => {
         'should show command description')
     t.ok(result.stdout.includes('handle'), 'should mention handle parameter')
     t.ok(result.stdout.includes('key'), 'should mention key parameter')
-    t.ok(result.stdout.includes('stdin'), 'should mention stdin option')
     t.ok(result.stdout.includes('--pds'), 'should mention pds option')
+    t.ok(result.stdout.includes('--format') || result.stdout.includes('-f'),
+        'should mention format option')
+    t.ok(result.stdout.includes('hex'), 'should mention hex format')
+    t.ok(result.stdout.includes('json'), 'should mention json format')
+    t.ok(result.stdout.includes('jwk'), 'should mention jwk format')
 })
 
 test('rotation command accepts key as argument', async t => {
@@ -251,6 +255,38 @@ test('rotation command accepts key as argument', async t => {
 
     t.equal(result.code, 0, 'help should work')
     t.ok(result.stdout.includes('[key]'), 'key should be an optional positional')
+})
+
+test('rotation command help mentions keypair generation', async t => {
+    const result = await runCLI(['rotation', '--help'])
+
+    t.equal(result.code, 0, 'help should work')
+    t.ok(
+        (result.stdout.includes('generated') ||
+        result.stdout.toLowerCase().includes('not provided')),
+        'should mention that a keypair will be generated if not provided'
+    )
+})
+
+test('rotation command accepts --format flag', async t => {
+    const result = await runCLI(['rotation', '--help'])
+
+    t.equal(result.code, 0, 'help should work')
+    t.ok(result.stdout.includes('--format'),
+        'should show --format option in help')
+    t.ok(
+        (result.stdout.includes('hex') &&
+        result.stdout.includes('json') &&
+        result.stdout.includes('jwk')),
+        'should show all format choices')
+})
+
+test('rotation command accepts -f shorthand for format', async t => {
+    const result = await runCLI(['rotation', '--help'])
+
+    t.equal(result.code, 0, 'help should work')
+    t.ok(result.stdout.includes('-f,') || result.stdout.includes('-f '),
+        'should show -f shorthand in help')
 })
 
 // Test the `aka` command
