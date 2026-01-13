@@ -45,7 +45,8 @@ yargs(hideBin(process.argv))
                     demandOption: true
                 })
                 .positional('key', {
-                    describe: 'The private key (hex) for the new rotation key. If not provided, a new keypair will be generated',
+                    describe: 'The private key (hex) for the new rotation key. ' +
+                        'If not provided, a new keypair will be generated',
                     type: 'string'
                 })
                 .option('pds', {
@@ -55,18 +56,21 @@ yargs(hideBin(process.argv))
                 })
                 .option('format', {
                     alias: 'f',
-                    describe: 'The output format. By default will print ' +
-                        'the private key only as hex',
+                    describe: 'The output format for the generated keypair. ' +
+                        '`json` means an object like { publicKey, privateKey },' +
+                        'where public key is a DID string, private key is ' +
+                        'hex encoded. For `hex` format, only the private key ' +
+                        'is returned.',
                     type: 'string',
                     choices: ['hex', 'json', 'jwk'],
-                    default: 'hex'
+                    default: 'json'
                 })
         },
         (argv) => {
             rotationCommand({
-                handle: argv.handle as string,
-                key: argv.key as string | undefined,
-                pds: argv.pds as string,
+                handle: argv.handle,
+                key: argv.key,
+                pds: argv.pds,
                 format: argv.format as 'hex'|'json'|'jwk'
             }).catch((error) => {
                 console.error(chalk.red.bold('Unexpected error:'), error)
@@ -346,7 +350,7 @@ async function rotationCommand (args:RotationArgs) {
 
     try {
         // Step 1: Get or generate the private key
-        let privateKeyHex: string
+        let privateKeyHex:string
         let isNewKey = false
 
         if (key) {
