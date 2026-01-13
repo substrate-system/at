@@ -199,6 +199,28 @@ The audit log returns an array of operations with their CIDs and timestamps:
 ]
 ```
 
+### Add a Rotation Key
+
+First, find your PDS URL. You can use `at did <yourname.tld>` for this.
+
+```sh
+at did nichoth.com
+
+# ...
+  "service": [
+    {
+      "id": "#atproto_pds",
+      "type": "AtprotoPersonalDataServer",
+      "serviceEndpoint": "https://lionsmane.us-east.host.bsky.network"
+    }
+  ]
+```
+
+I am using `lionsmane.us-east.host.bsky.network`.
+
+You **must include your current rotation key in the update**.
+
+
 ## How it works
 
 The AT Protocol uses [DID (Decentralized Identifier)](https://atproto.com/specs/did)

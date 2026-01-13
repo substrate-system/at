@@ -223,6 +223,37 @@ test('keys command shows help with --help flag', async t => {
     t.ok(result.stdout.includes('jwk'), 'should mention jwk format')
 })
 
+// Test the `rotation` command
+test('rotation command requires handle argument', async t => {
+    const result = await runCLI(['rotation'])
+
+    t.ok(result.code !== 0,
+        'command should exit with non-zero code when missing handle')
+    t.ok(result.stderr.includes('Not enough non-option arguments'),
+        'should show error about missing arguments')
+})
+
+test('rotation command shows help with --help flag', async t => {
+    const result = await runCLI(['rotation', '--help'])
+
+    t.equal(result.code, 0, 'help command should exit with code 0')
+    t.ok(result.stdout.includes('Add a rotation key to a Bluesky account'),
+        'should show command description')
+    t.ok(result.stdout.includes('handle'), 'should mention handle parameter')
+    t.ok(result.stdout.includes('key'), 'should mention key parameter')
+    t.ok(result.stdout.includes('stdin'), 'should mention stdin option')
+    t.ok(result.stdout.includes('--pds'), 'should mention pds option')
+})
+
+test('rotation command accepts key as argument', async t => {
+    // Just verify the command structure is correct by checking help
+    // We can't test the actual functionality without valid credentials
+    const result = await runCLI(['rotation', '--help'])
+
+    t.equal(result.code, 0, 'help should work')
+    t.ok(result.stdout.includes('[key]'), 'key should be an optional positional')
+})
+
 // Test the `aka` command
 test('aka command requires handle and URL arguments', async t => {
     const result = await runCLI(['aka'])
@@ -264,6 +295,7 @@ test('CLI shows help with --help flag', async t => {
     const result = await runCLI(['--help'])
 
     t.equal(result.code, 0, 'help command should exit with code 0')
+    t.ok(result.stdout.includes('rotation'), 'should list rotation command')
     t.ok(result.stdout.includes('keys'), 'should list keys command')
     t.ok(result.stdout.includes('aka'), 'should list aka command')
     t.ok(result.stdout.includes('did'), 'should list did command')

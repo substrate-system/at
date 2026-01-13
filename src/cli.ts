@@ -8,6 +8,8 @@ import { hideBin } from 'yargs/helpers'
 import { AtpAgent } from '@atproto/api'
 import { password, input } from '@inquirer/prompts'
 import chalk from 'chalk'
+import * as readline from 'node:readline'
+import { type DidDocument } from '@atproto/identity'
 
 interface AkaArgs {
     handle:string
@@ -21,6 +23,12 @@ interface DidArgs {
     log?:boolean
 }
 
+interface RotationArgs {
+    handle:string
+    key?:string
+    pds?:string
+}
+
 /**
  * secp256k1 should be hex format private key for @atproto/crypto import
  * https://github.com/bluesky-social/atproto/blob/c2615a7eee6da56a43835adb09c5901a1872efd3/packages/crypto/src/secp256k1/keypair.ts#L41
@@ -28,13 +36,45 @@ interface DidArgs {
 
 yargs(hideBin(process.argv))
     .command(
+        'rotation <handle> [key]',
+        'Add a rotation key to a Bluesky account',
+        (yargs) => {
+            return yargs
+                .positional('handle', {
+                    describe: 'Your Bluesky handle (e.g., nichoth.com)',
+                    type: 'string',
+                    demandOption: true
+                })
+                .positional('key', {
+                    describe: 'The private key (hex) for the new rotation key. If not provided, will read from stdin',
+                    type: 'string'
+                })
+                .option('pds', {
+                    describe: 'Custom PDS server URL',
+                    type: 'string',
+                    default: 'https://bsky.social'
+                })
+        },
+        (argv) => {
+            rotationCommand({
+                handle: argv.handle as string,
+                key: argv.key as string | undefined,
+                pds: argv.pds as string
+            }).catch((error) => {
+                console.error(chalk.red.bold('Unexpected error:'), error)
+                process.exit(1)
+            })
+        }
+    )
+    .command(
         'keys',
         'Generate a new secp256k1 keypair',
         (yargs) => {
             return yargs
                 .option('format', {
                     alias: 'f',
-                    describe: 'The output format. By default will print the private key only as hex',
+                    describe: 'The output format. By default will print ' +
+                        'the private key only as hex',
                     type: 'string',
                     choices: ['hex', 'json', 'jwk'],
                     default: 'hex'
@@ -42,7 +82,7 @@ yargs(hideBin(process.argv))
         },
         async (argv) => {
             try {
-                await keysCommand({ format: argv.format as 'hex' | 'json' | 'jwk' })
+                await keysCommand({ format: argv.format as 'hex'|'json'|'jwk' })
             } catch (error) {
                 console.error(chalk.red.bold('Unexpected error:'), error)
                 process.exit(1)
@@ -124,7 +164,7 @@ yargs(hideBin(process.argv))
     .strict()
     .parse()
 
-async function didCommand (args:DidArgs) {
+async function didCommand (args:DidArgs):Promise<DidDocument> {
     let { handle } = args
     const { pds = 'https://bsky.social', log = false } = args
 
@@ -142,11 +182,14 @@ async function didCommand (args:DidArgs) {
         // If log flag is set, fetch and print the audit log
         if (log) {
             if (!did.startsWith('did:plc:')) {
-                throw new Error('Audit log is only available for did:plc: identifiers')
+                throw new Error('Audit log is only available for did:plc: ' +
+                    'identifiers')
             }
             const logData = await getDidLog(did)
             console.log(JSON.stringify(logData, null, 2))
-            return
+            const plcResponse = await fetch(`https://plc.directory/${did}`)
+            const didDoc = await plcResponse.json() as DidDocument
+            return didDoc
         }
 
         // Fetch DID document
@@ -166,6 +209,8 @@ async function didCommand (args:DidArgs) {
         }
 
         console.log(JSON.stringify(didDoc, null, 2))
+
+        return didDoc
     } catch (err) {
         console.error(chalk.red.bold('\nError...'), err instanceof Error ?
             err.message :
@@ -239,7 +284,7 @@ async function akaCommand (args:AkaArgs) {
     }
 }
 
-async function keysCommand (opts: { format: 'hex' | 'json' | 'jwk' }) {
+async function keysCommand (opts:{ format:'hex'|'json'|'jwk' }) {
     const { format } = opts
     const keypair = await Secp256k1Keypair.create({ exportable: true })
 
@@ -291,20 +336,128 @@ async function keysCommand (opts: { format: 'hex' | 'json' | 'jwk' }) {
     }
 }
 
-/**
- * Add a rotation key.
- * @param {string} did The DID you are updating.
- */
-async function rotate (opts:{ did?:string, pds?:string } = {}) {
-    const { did, pds = 'https://bsky.social' } = opts
-    if (!did) throw new Error('DID is required')
-    const log = await getDidLog(did)
-    const last = log[log.length - 1]
-    const { cid } = last
-    const agent = new AtpAgent({ service: pds })
+async function rotationCommand (args: RotationArgs) {
+    const { handle, key, pds = 'https://bsky.social' } = args
 
-    // have to send a signed request to the PLC Directory
-    // the PDS has your current rotation key
+    console.log(chalk.blue(`\nAdding rotation key for ${chalk.bold(handle)}`))
+    console.log(chalk.gray(`PDS: ${pds}\n`))
+
+    try {
+        // Step 1: Get the private key (from argument or stdin)
+        let privateKeyHex: string
+        if (key) {
+            privateKeyHex = key
+        } else {
+            console.log(chalk.cyan('Reading private key from stdin...'))
+            privateKeyHex = await readStdin()
+            privateKeyHex = privateKeyHex.trim()
+        }
+
+        // Validate hex format
+        if (!/^[0-9a-f]{64}$/i.test(privateKeyHex)) {
+            throw new Error('Invalid private key format. Expected 64 character hex string')
+        }
+
+        // Step 2: Import the keypair and generate did:key
+        console.log(chalk.cyan('Step 1: Generating did:key from private key'))
+        const keypair = await Secp256k1Keypair.import(privateKeyHex, { exportable: false })
+        const didKey = keypair.did()
+        console.log(chalk.gray(`New rotation key: ${didKey}\n`))
+
+        // Step 3: Login
+        console.log(chalk.cyan('Step 2: Login'))
+        const passwordInput = await password({
+            message: `Enter password for ${handle}:`,
+            mask: '*'
+        })
+
+        const agent = new AtpAgent({ service: pds })
+        await agent.login({ identifier: handle, password: passwordInput })
+        console.log(chalk.green('✓ Logged in successfully\n'))
+
+        // Step 4: Get current DID credentials
+        console.log(chalk.cyan('Step 3: Fetching current DID credentials'))
+        const current = await agent.com.atproto.identity.getRecommendedDidCredentials()
+        console.log(chalk.green('✓ Retrieved current credentials\n'))
+
+        // Check if key already exists
+        if (current.data.rotationKeys?.includes(didKey)) {
+            console.log(chalk.yellow('⚠ This rotation key already exists in your DID document'))
+            return
+        }
+
+        // Step 5: Request email verification
+        console.log(chalk.cyan('Step 4: Requesting email verification code'))
+        await agent.com.atproto.identity.requestPlcOperationSignature()
+        console.log(chalk.green('✓ Email sent. Check your inbox\n'))
+
+        // Step 6: Get email code from user
+        console.log(chalk.cyan('Step 5: Email verification'))
+        const emailCode = await input({
+            message: 'Enter the code from your email:',
+            validate: (value) => {
+                if (!value || value.trim().length === 0) {
+                    return 'Please enter the verification code'
+                }
+                return true
+            }
+        })
+
+        // Step 7: Sign and submit the PLC operation
+        console.log(chalk.cyan('\nStep 6: Signing and submitting PLC operation'))
+
+        // Add new rotation key while keeping existing ones
+        const newRotationKeys = [
+            ...(current.data.rotationKeys || []),
+            didKey
+        ]
+
+        const signed = await agent.com.atproto.identity.signPlcOperation({
+            token: emailCode.trim(),
+            rotationKeys: newRotationKeys,
+            verificationMethods: current.data.verificationMethods,
+            services: current.data.services,
+            alsoKnownAs: current.data.alsoKnownAs
+        })
+
+        await agent.com.atproto.identity.submitPlcOperation({
+            operation: signed.data.operation
+        })
+
+        console.log(chalk.green.bold('\n✓ Success! Added rotation key'))
+        console.log(chalk.gray('Your DID now includes these rotation keys:'))
+        newRotationKeys.forEach(key => {
+            console.log(chalk.gray(`  - ${key}`))
+        })
+    } catch (err) {
+        console.error(chalk.red.bold('\nError...'), err instanceof Error ?
+            err.message :
+            String(err)
+        )
+        process.exit(1)
+    }
+}
+
+/**
+ * Read from stdin until EOF
+ */
+async function readStdin (): Promise<string> {
+    return new Promise((resolve) => {
+        const rl = readline.createInterface({
+            input: process.stdin,
+            output: process.stdout,
+            terminal: false
+        })
+
+        let data = ''
+        rl.on('line', (line) => {
+            data += line
+        })
+
+        rl.on('close', () => {
+            resolve(data)
+        })
+    })
 }
 
 async function getDidLog (did:string):Promise<Record<string, any>[]> {
