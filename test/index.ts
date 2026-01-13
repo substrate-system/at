@@ -118,6 +118,108 @@ test('did command --log shows different output than regular did', async t => {
         'log and regular output should be different')
 })
 
+// Test the `keys` command
+test('keys command generates a keypair with default hex format', async t => {
+    const result = await runCLI(['keys'])
+
+    t.equal(result.code, 0, 'command should exit with code 0')
+
+    // Should output a hex string (64 characters for 32 bytes)
+    const output = result.stdout.trim()
+    t.equal(output.length, 64, 'should output 64 character hex string')
+    t.ok(/^[0-9a-f]{64}$/.test(output), 'should be valid lowercase hex')
+})
+
+test('keys command with --format hex outputs hex private key', async t => {
+    const result = await runCLI(['keys', '--format', 'hex'])
+
+    t.equal(result.code, 0, 'command should exit with code 0')
+
+    const output = result.stdout.trim()
+    t.equal(output.length, 64, 'should output 64 character hex string')
+    t.ok(/^[0-9a-f]{64}$/.test(output), 'should be valid lowercase hex')
+})
+
+test('keys command with -f shorthand works', async t => {
+    const result = await runCLI(['keys', '-f', 'hex'])
+
+    t.equal(result.code, 0, 'command should exit with code 0')
+
+    const output = result.stdout.trim()
+    t.ok(/^[0-9a-f]{64}$/.test(output), 'should be valid hex output')
+})
+
+test('keys command with json format outputs both keys', async t => {
+    const result = await runCLI(['keys', '--format', 'json'])
+
+    t.equal(result.code, 0, 'command should exit with code 0')
+
+    try {
+        const keys = JSON.parse(result.stdout)
+        t.ok(keys.publicKey, 'should have publicKey field')
+        t.ok(keys.privateKey, 'should have privateKey field')
+
+        // Public key is compressed (33 bytes = 66 hex chars, starts with 02 or 03)
+        t.ok(/^0[23][0-9a-f]{64}$/.test(keys.publicKey),
+            'publicKey should be valid compressed secp256k1 key')
+
+        // Private key is 32 bytes = 64 hex chars
+        t.equal(keys.privateKey.length, 64,
+            'privateKey should be 64 character hex string')
+        t.ok(/^[0-9a-f]{64}$/.test(keys.privateKey),
+            'privateKey should be valid hex')
+    } catch (_err) {
+        t.fail('Should output valid JSON with key fields')
+    }
+})
+
+test('keys command with jwk format outputs JSON Web Key', async t => {
+    const result = await runCLI(['keys', '--format', 'jwk'])
+
+    t.equal(result.code, 0, 'command should exit with code 0')
+
+    try {
+        const jwk = JSON.parse(result.stdout)
+        t.equal(jwk.kty, 'EC', 'should have kty field set to EC')
+        t.equal(jwk.crv, 'secp256k1', 'should have crv field set to secp256k1')
+        t.ok(jwk.x, 'should have x coordinate')
+        t.ok(jwk.y, 'should have y coordinate')
+        t.ok(jwk.d, 'should have d (private key)')
+        t.ok(Array.isArray(jwk.key_ops), 'should have key_ops array')
+        t.ok(jwk.key_ops.includes('sign'), 'key_ops should include sign')
+
+        // Check base64url format (alphanumeric plus - and _)
+        t.ok(/^[A-Za-z0-9_-]+$/.test(jwk.x), 'x should be base64url encoded')
+        t.ok(/^[A-Za-z0-9_-]+$/.test(jwk.y), 'y should be base64url encoded')
+        t.ok(/^[A-Za-z0-9_-]+$/.test(jwk.d), 'd should be base64url encoded')
+    } catch (_err) {
+        t.fail('Should output valid JWK format')
+    }
+})
+
+test('keys command generates different keys each time', async t => {
+    const result1 = await runCLI(['keys'])
+    const result2 = await runCLI(['keys'])
+
+    t.equal(result1.code, 0, 'first command should succeed')
+    t.equal(result2.code, 0, 'second command should succeed')
+
+    t.notEqual(result1.stdout.trim(), result2.stdout.trim(),
+        'should generate different keys each time')
+})
+
+test('keys command shows help with --help flag', async t => {
+    const result = await runCLI(['keys', '--help'])
+
+    t.equal(result.code, 0, 'help command should exit with code 0')
+    t.ok(result.stdout.includes('Generate a new secp256k1 keypair'),
+        'should show command description')
+    t.ok(result.stdout.includes('format'), 'should mention format option')
+    t.ok(result.stdout.includes('hex'), 'should mention hex format')
+    t.ok(result.stdout.includes('json'), 'should mention json format')
+    t.ok(result.stdout.includes('jwk'), 'should mention jwk format')
+})
+
 // Test the `aka` command
 test('aka command requires handle and URL arguments', async t => {
     const result = await runCLI(['aka'])
@@ -159,6 +261,7 @@ test('CLI shows help with --help flag', async t => {
     const result = await runCLI(['--help'])
 
     t.equal(result.code, 0, 'help command should exit with code 0')
+    t.ok(result.stdout.includes('keys'), 'should list keys command')
     t.ok(result.stdout.includes('aka'), 'should list aka command')
     t.ok(result.stdout.includes('did'), 'should list did command')
 })

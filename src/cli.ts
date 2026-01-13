@@ -1,6 +1,8 @@
 #!/usr/bin/env node
 import 'dotenv/config'
 import yargs from 'yargs'
+import { Secp256k1Keypair } from '@atproto/crypto'
+import { secp256k1 } from '@noble/curves/secp256k1'
 import { hideBin } from 'yargs/helpers'
 import { AtpAgent } from '@atproto/api'
 import { password, input } from '@inquirer/prompts'
@@ -18,58 +20,34 @@ interface DidArgs {
     log?:boolean
 }
 
-async function didCommand (args:DidArgs) {
-    let { handle } = args
-    const { pds = 'https://bsky.social', log = false } = args
-
-    // Strip '@' prefix if present
-    handle = handle.startsWith('@') ? handle.slice(1) : handle
-
-    try {
-        // Create an agent (no login needed for public operations)
-        const agent = new AtpAgent({ service: pds })
-
-        // Resolve handle to DID
-        const response = await agent.resolveHandle({ handle })
-        const did = response.data.did
-
-        // If log flag is set, fetch and print the audit log
-        if (log) {
-            if (!did.startsWith('did:plc:')) {
-                throw new Error('Audit log is only available for did:plc: identifiers')
-            }
-            const logData = await getDidLog(did)
-            console.log(JSON.stringify(logData, null, 2))
-            return
-        }
-
-        // Fetch DID document
-        let didDoc
-        if (did.startsWith('did:plc:')) {
-            // Fetch from PLC directory
-            const plcResponse = await fetch(`https://plc.directory/${did}`)
-            didDoc = await plcResponse.json()
-        } else if (did.startsWith('did:web:')) {
-            // Handle did:web
-            const webPart = did.replace('did:web:', '').replace(':', '/')
-            const webUrl = `https://${webPart}/.well-known/did.json`
-            const webResponse = await fetch(webUrl)
-            didDoc = await webResponse.json()
-        } else {
-            throw new Error(`Unsupported DID method: ${did}`)
-        }
-
-        console.log(JSON.stringify(didDoc, null, 2))
-    } catch (err) {
-        console.error(chalk.red.bold('\nError...'), err instanceof Error ?
-            err.message :
-            String(err)
-        )
-        process.exit(1)
-    }
-}
+/**
+ * secp256k1 should be hex format private key for @atproto/crypto import
+ * https://github.com/bluesky-social/atproto/blob/c2615a7eee6da56a43835adb09c5901a1872efd3/packages/crypto/src/secp256k1/keypair.ts#L41
+ */
 
 yargs(hideBin(process.argv))
+    .command(
+        'keys',
+        'Generate a new secp256k1 keypair',
+        (yargs) => {
+            return yargs
+                .option('format', {
+                    alias: 'f',
+                    describe: 'The output format. By default will print the private key only as hex',
+                    type: 'string',
+                    choices: ['hex', 'json', 'jwk'],
+                    default: 'hex'
+                })
+        },
+        async (argv) => {
+            try {
+                await keysCommand({ format: argv.format as 'hex' | 'json' | 'jwk' })
+            } catch (error) {
+                console.error(chalk.red.bold('Unexpected error:'), error)
+                process.exit(1)
+            }
+        }
+    )
     .command(
         'aka <handle> <URL>',
         'Add a URL to your DID document alsoKnownAs',
@@ -145,6 +123,57 @@ yargs(hideBin(process.argv))
     .strict()
     .parse()
 
+async function didCommand (args:DidArgs) {
+    let { handle } = args
+    const { pds = 'https://bsky.social', log = false } = args
+
+    // Strip '@' prefix if present
+    handle = handle.startsWith('@') ? handle.slice(1) : handle
+
+    try {
+        // Create an agent (no login needed for public operations)
+        const agent = new AtpAgent({ service: pds })
+
+        // Resolve handle to DID
+        const response = await agent.resolveHandle({ handle })
+        const did = response.data.did
+
+        // If log flag is set, fetch and print the audit log
+        if (log) {
+            if (!did.startsWith('did:plc:')) {
+                throw new Error('Audit log is only available for did:plc: identifiers')
+            }
+            const logData = await getDidLog(did)
+            console.log(JSON.stringify(logData, null, 2))
+            return
+        }
+
+        // Fetch DID document
+        let didDoc
+        if (did.startsWith('did:plc:')) {
+            // Fetch from PLC directory
+            const plcResponse = await fetch(`https://plc.directory/${did}`)
+            didDoc = await plcResponse.json()
+        } else if (did.startsWith('did:web:')) {
+            // Handle did:web
+            const webPart = did.replace('did:web:', '').replace(':', '/')
+            const webUrl = `https://${webPart}/.well-known/did.json`
+            const webResponse = await fetch(webUrl)
+            didDoc = await webResponse.json()
+        } else {
+            throw new Error(`Unsupported DID method: ${did}`)
+        }
+
+        console.log(JSON.stringify(didDoc, null, 2))
+    } catch (err) {
+        console.error(chalk.red.bold('\nError...'), err instanceof Error ?
+            err.message :
+            String(err)
+        )
+        process.exit(1)
+    }
+}
+
 async function akaCommand (args:AkaArgs) {
     const { handle, url, pds = 'https://bsky.social' } = args
 
@@ -209,7 +238,69 @@ async function akaCommand (args:AkaArgs) {
     }
 }
 
-async function getDidLog (did:string):Promise<Record<string, any>> {
+async function keysCommand (opts: { format: 'hex' | 'json' | 'jwk' }) {
+    const { format } = opts
+    const keypair = await Secp256k1Keypair.create({ exportable: true })
+
+    // Export private key and convert to hex string
+    const privateKeyBytes = await keypair.export()
+    const privateKeyHex = Buffer.from(privateKeyBytes).toString('hex')
+
+    // Get public key as hex string
+    const publicKeyHex = keypair.publicKeyStr('hex')
+
+    if (format === 'hex') {
+        // Default: print only private key as hex
+        console.log(privateKeyHex)
+    } else if (format === 'json') {
+        // JSON format with both keys
+        console.log(JSON.stringify({
+            publicKey: publicKeyHex,
+            privateKey: privateKeyHex
+        }, null, 2))
+    } else if (format === 'jwk') {
+        // Export as JSON Web Key format
+        // Note: secp256k1 is not an IANA-registered curve for JWK standard,
+        // but this follows the JWK EC key structure
+        const compressedPubkey = keypair.publicKeyBytes()
+
+        // Decompress the public key to get x and y coordinates
+        const point = secp256k1.Point.fromHex(compressedPubkey)
+        const uncompressedPubkey = point.toRawBytes(false)
+
+        // Uncompressed key format: [0x04, x (32 bytes), y (32 bytes)]
+        const x = uncompressedPubkey.slice(1, 33)
+        const y = uncompressedPubkey.slice(33, 65)
+
+        const jwk = {
+            kty: 'EC',
+            crv: 'secp256k1',
+            x: Buffer.from(x).toString('base64url'),
+            y: Buffer.from(y).toString('base64url'),
+            d: Buffer.from(privateKeyBytes).toString('base64url'),
+            key_ops: ['sign']
+        }
+        console.log(JSON.stringify(jwk, null, 2))
+    }
+}
+
+/**
+ * Add a rotation key.
+ * @param {string} did The DID you are updating.
+ */
+async function rotate (opts:{ did?:string, pds?:string } = {}) {
+    const { did, pds = 'https://bsky.social' } = opts
+    if (!did) throw new Error('DID is required')
+    const log = await getDidLog(did)
+    const last = log[log.length - 1]
+    const { cid } = last
+    const agent = new AtpAgent({ service: pds })
+
+    // have to send a signed request to the PLC Directory
+    // the PDS has your current rotation key
+}
+
+async function getDidLog (did:string):Promise<Record<string, any>[]> {
     // The PLC directory provides a log endpoint:
     // https://plc.directory/{did}/log/audit
     const plcUrl = 'https://plc.directory'
@@ -219,6 +310,6 @@ async function getDidLog (did:string):Promise<Record<string, any>> {
         throw new Error(`Failed to fetch log: ${response.statusText}`)
     }
 
-    const log = await response.json() as Record<string, any>
+    const log = await response.json() as Record<string, any>[]
     return log
 }
