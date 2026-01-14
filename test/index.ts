@@ -263,7 +263,7 @@ test('rotation command help mentions keypair generation', async t => {
     t.equal(result.code, 0, 'help should work')
     t.ok(
         (result.stdout.includes('generated') ||
-        result.stdout.toLowerCase().includes('not provided')),
+            result.stdout.toLowerCase().includes('not provided')),
         'should mention that a keypair will be generated if not provided'
     )
 })
@@ -276,8 +276,8 @@ test('rotation command accepts --format flag', async t => {
         'should show --format option in help')
     t.ok(
         (result.stdout.includes('hex') &&
-        result.stdout.includes('json') &&
-        result.stdout.includes('jwk')),
+            result.stdout.includes('json') &&
+            result.stdout.includes('jwk')),
         'should show all format choices')
 })
 
@@ -287,6 +287,22 @@ test('rotation command accepts -f shorthand for format', async t => {
     t.equal(result.code, 0, 'help should work')
     t.ok(result.stdout.includes('-f,') || result.stdout.includes('-f '),
         'should show -f shorthand in help')
+})
+
+test('rotation command shows help for --remove option', async t => {
+    const result = await runCLI(['rotation', '--help'])
+
+    t.equal(result.code, 0, 'help should work')
+    t.ok(result.stdout.includes('--remove'), 'should show --remove option')
+    t.ok(result.stdout.includes('Remove the given rotation key'),
+        'should show remove description')
+})
+
+test('rotation command accepts -rm shorthand for remove', async t => {
+    const result = await runCLI(['rotation', '--help'])
+
+    t.equal(result.code, 0, 'help should work')
+    t.ok(result.stdout.includes('-rm'), 'should show -rm shorthand')
 })
 
 // Test the `aka` command
@@ -339,10 +355,10 @@ test('CLI shows help with --help flag', async t => {
 /**
  * Helper function to run the CLI command and capture output
  */
-function runCLI (args:string[]):Promise<{
-    stdout:string
-    stderr:string
-    code:number | null
+function runCLI (args: string[]): Promise<{
+    stdout: string
+    stderr: string
+    code: number | null
 }> {
     return new Promise((resolve) => {
         const child = spawn('node', [CLI_PATH, ...args])

@@ -10,28 +10,28 @@ import chalk from 'chalk'
 import { type DidDocument } from '@atproto/identity'
 
 interface AkaArgs {
-    handle:string;
-    url:string;
-    pds?:string;
+    handle: string;
+    url: string;
+    pds?: string;
 }
 
 interface DidArgs {
-    handle:string;
-    pds?:string;
-    log?:boolean;
+    handle: string;
+    pds?: string;
+    log?: boolean;
 }
 
 interface RotationArgs {
-    handle:string;
-    key?:string;
-    pds?:string;
-    format:'hex'|'json'|'jwk';
+    handle: string;
+    key?: string;
+    pds?: string;
+    format: 'hex' | 'json' | 'jwk';
 }
 
 interface RemoveArgs {
-    handle:string;
-    key:string;  // <-- the public key
-    pds?:string;
+    handle: string;
+    key: string;  // <-- the public key
+    pds?: string;
 }
 
 /**
@@ -42,7 +42,7 @@ interface RemoveArgs {
 yargs(hideBin(process.argv))
     .command(
         'rotation <handle> [key]',
-        'Add a rotation key to a Bluesky account',
+        'Add or remove a rotation key to a Bluesky account',
         (yargs) => {
             return yargs
                 .positional('handle', {
@@ -85,17 +85,17 @@ yargs(hideBin(process.argv))
                     handle: argv.handle,
                     key: argv.remove
                 })
+            } else {
+                rotationCommand({
+                    handle: argv.handle!,
+                    key: argv.key,
+                    pds: argv.pds,
+                    format: argv.format as 'hex' | 'json' | 'jwk'
+                }).catch((error) => {
+                    console.error(chalk.red.bold('Unexpected error:'), error)
+                    process.exit(1)
+                })
             }
-
-            rotationCommand({
-                handle: argv.handle!,
-                key: argv.key,
-                pds: argv.pds,
-                format: argv.format as 'hex'|'json'|'jwk'
-            }).catch((error) => {
-                console.error(chalk.red.bold('Unexpected error:'), error)
-                process.exit(1)
-            })
         }
     )
     .command(
@@ -114,7 +114,7 @@ yargs(hideBin(process.argv))
         },
         async (argv) => {
             try {
-                await keysCommand({ format: argv.format as 'hex'|'json'|'jwk' })
+                await keysCommand({ format: argv.format as 'hex' | 'json' | 'jwk' })
             } catch (error) {
                 console.error(chalk.red.bold('Unexpected error:'), error)
                 process.exit(1)
@@ -196,7 +196,7 @@ yargs(hideBin(process.argv))
     .strict()
     .parse()
 
-async function didCommand (args:DidArgs):Promise<DidDocument> {
+async function didCommand (args: DidArgs): Promise<DidDocument> {
     let { handle } = args
     const { pds = 'https://bsky.social', log = false } = args
 
@@ -252,7 +252,7 @@ async function didCommand (args:DidArgs):Promise<DidDocument> {
     }
 }
 
-async function akaCommand (args:AkaArgs) {
+async function akaCommand (args: AkaArgs) {
     const { handle, url, pds = 'https://bsky.social' } = args
 
     console.log(chalk.blue(`\nSetting up aka for ${chalk.bold(handle)}`))
@@ -316,7 +316,7 @@ async function akaCommand (args:AkaArgs) {
     }
 }
 
-async function keysCommand (opts:{ format:'hex'|'json'|'jwk' }) {
+async function keysCommand (opts: { format: 'hex' | 'json' | 'jwk' }) {
     const { format } = opts
     const keypair = await Secp256k1Keypair.create({ exportable: true })
 
@@ -362,11 +362,137 @@ async function keysCommand (opts:{ format:'hex'|'json'|'jwk' }) {
     }
 }
 
-async function removeCommand (args:RemoveArgs) {
-    const { pds, key, handle } = args
+async function removeCommand (args: RemoveArgs) {
+    const { pds = 'https://bsky.social', key: rawKey, handle } = args
+    // Allow passing in either the full did:key string or just the key part
+    const key = rawKey.startsWith('did:key:') ? rawKey : `did:key:${rawKey}`
+
+    console.log(chalk.blue(`\nRemoving rotation key for ${chalk.bold(handle)}`))
+    console.log(chalk.gray(`PDS: ${pds}`))
+    console.log(chalk.gray(`Key to remove: ${key}\n`))
+
+    try {
+        // Step 1: Login
+        console.log(chalk.cyan('Step 1: Login'))
+        const passwordInput = await password({
+            message: `Enter password for ${handle}:`,
+            mask: '*'
+        })
+
+        const agent = new AtpAgent({ service: pds })
+        await agent.login({ identifier: handle, password: passwordInput })
+        console.log(chalk.green('✓ Logged in successfully\n'))
+
+        // Step 2: Get current rotation keys
+        console.log(chalk.cyan('Step 2: Fetching current DID credentials'))
+
+        const { data } = await agent.resolveHandle({ handle })
+        const did = data.did
+
+        let currentRotationKeys: string[] = []
+        let currentVerificationMethods: any
+        let currentServices: any
+        let currentAlsoKnownAs: string[] | undefined
+
+        if (did.startsWith('did:plc:')) {
+            const log = await getDidLog(did)
+            const lastEntry = log[log.length - 1]
+            if (lastEntry) {
+                // The log entry might be null creation or having keys
+                // We need to look at the operation payload actually.
+                // The getDidLog returns the *audit* log which includes `operation` object?
+                // Let's check getDidLog implementation.
+                // It fetches /log/audit => returns array of { cid, nullified, created, operation, ... }
+                // The 'operation' field contains the actual PLC op (rotationKeys, etc)
+
+                // However, `getDidLog` as implemented in this file returns `Record<string, any>[]`.
+                // We need to ensure we access the operation details correctly.
+                // The PLC audit log entry has an 'operation' which is the signed op.
+                // But wait, the audit log entries are wrappers. The 'operation' field IS the op object?
+                // Let's verify.
+                // Checking existing test `did command with --log flag...`:
+                // t.ok(log[0].operation, 'log entries should have an operation field')
+
+                currentRotationKeys = lastEntry.operation.rotationKeys || []
+                currentVerificationMethods = lastEntry.operation.verificationMethods
+                currentServices = lastEntry.operation.services
+                currentAlsoKnownAs = lastEntry.operation.alsoKnownAs
+            }
+        } else {
+            // Fallback for non-plc (though rotation might not be supported this way)
+            const current = await agent.com.atproto.identity
+                .getRecommendedDidCredentials()
+            currentRotationKeys = current.data.rotationKeys || []
+            currentVerificationMethods = current.data.verificationMethods
+            currentServices = current.data.services
+            currentAlsoKnownAs = current.data.alsoKnownAs
+        }
+
+        console.log(chalk.green('✓ Retrieved current credentials\n'))
+
+        // Check if key exists in current rotation keys
+        if (!currentRotationKeys.includes(key)) {
+            console.log(chalk.red(`⚠ The key ${key} is not in your ` +
+                'list of rotation keys.'))
+            console.log(chalk.gray('Current rotation keys:'))
+            currentRotationKeys.forEach(k => console.log(chalk.gray(`  - ${k}`)))
+            return
+        }
+
+        // Step 3: Request email verification
+        console.log(chalk.cyan('Step 3: Requesting email verification code'))
+        await agent.com.atproto.identity.requestPlcOperationSignature()
+        console.log(chalk.green('✓ Email sent. Check your inbox\n'))
+
+        // Step 4: Get email code from user
+        console.log(chalk.cyan('Step 4: Email verification'))
+        const emailCode = await input({
+            message: 'Enter the code from your email:',
+            validate: (value) => {
+                if (!value || value.trim().length === 0) {
+                    return 'Please enter the verification code'
+                }
+                return true
+            }
+        })
+
+        // Step 5: Sign and submit the PLC operation
+        console.log(chalk.cyan('\nStep 5: Signing and submitting PLC operation'))
+
+        // Filter out the key to remove
+        const newRotationKeys = currentRotationKeys.filter(k => k !== key)
+
+        const signed = await agent.com.atproto.identity.signPlcOperation({
+            token: emailCode.trim(),
+            rotationKeys: newRotationKeys,
+            verificationMethods: currentVerificationMethods,
+            services: currentServices,
+            alsoKnownAs: currentAlsoKnownAs
+        })
+
+        await agent.com.atproto.identity.submitPlcOperation({
+            operation: signed.data.operation
+        })
+
+        console.log(chalk.green.bold('\n✓ Success! Removed rotation key'))
+        console.log(chalk.gray('Your DID now includes these rotation keys:'))
+        if (newRotationKeys.length === 0) {
+            console.log(chalk.gray('  (none)'))
+        } else {
+            newRotationKeys.forEach(k => {
+                console.log(chalk.gray(`  - ${k}`))
+            })
+        }
+    } catch (err) {
+        console.error(chalk.red.bold('\nError...'), err instanceof Error ?
+            err.message :
+            String(err)
+        )
+        process.exit(1)
+    }
 }
 
-async function rotationCommand (args:RotationArgs) {
+async function rotationCommand (args: RotationArgs) {
     const { handle, key, pds = 'https://bsky.social', format } = args
 
     console.log(chalk.blue(`\nAdding rotation key for ${chalk.bold(handle)}`))
@@ -374,7 +500,7 @@ async function rotationCommand (args:RotationArgs) {
 
     try {
         // Step 1: Get or generate the private key
-        let privateKeyHex:string
+        let privateKeyHex: string
         let isNewKey = false
 
         if (key) {
@@ -516,7 +642,7 @@ async function rotationCommand (args:RotationArgs) {
     }
 }
 
-async function getDidLog (did:string):Promise<Record<string, any>[]> {
+async function getDidLog (did: string): Promise<Record<string, any>[]> {
     // The PLC directory provides a log endpoint:
     // https://plc.directory/{did}/log/audit
     const plcUrl = 'https://plc.directory'
