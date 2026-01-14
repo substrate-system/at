@@ -25,6 +25,7 @@ your [DID document](https://atproto.com/specs/did).
   * [`did` command](#did-command)
     + [Arguments](#arguments)
     + [Example](#example-1)
+  * [Add a Rotation Key](#add-a-rotation-key)
 - [How it works](#how-it-works)
 
 <!-- tocstop -->
