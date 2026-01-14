@@ -10,22 +10,28 @@ import chalk from 'chalk'
 import { type DidDocument } from '@atproto/identity'
 
 interface AkaArgs {
-    handle:string
-    url:string
-    pds?:string
+    handle:string;
+    url:string;
+    pds?:string;
 }
 
 interface DidArgs {
-    handle:string
-    pds?:string
-    log?:boolean
+    handle:string;
+    pds?:string;
+    log?:boolean;
 }
 
 interface RotationArgs {
-    handle:string
-    key?:string
-    pds?:string
-    format:'hex'|'json'|'jwk'
+    handle:string;
+    key?:string;
+    pds?:string;
+    format:'hex'|'json'|'jwk';
+}
+
+interface RemoveArgs {
+    handle:string;
+    key:string;  // <-- the public key
+    pds?:string;
 }
 
 /**
@@ -72,9 +78,17 @@ yargs(hideBin(process.argv))
                     default: 'json'
                 })
         },
-        (argv) => {
+        async (argv) => {
+            if (argv.remove) {
+                await removeCommand({
+                    pds: argv.pds,
+                    handle: argv.handle,
+                    key: argv.remove
+                })
+            }
+
             rotationCommand({
-                handle: argv.handle,
+                handle: argv.handle!,
                 key: argv.key,
                 pds: argv.pds,
                 format: argv.format as 'hex'|'json'|'jwk'
@@ -346,6 +360,10 @@ async function keysCommand (opts:{ format:'hex'|'json'|'jwk' }) {
         }
         console.log(JSON.stringify(jwk, null, 2))
     }
+}
+
+async function removeCommand (args:RemoveArgs) {
+    const { pds, key, handle } = args
 }
 
 async function rotationCommand (args:RotationArgs) {
