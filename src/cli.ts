@@ -316,7 +316,7 @@ async function akaCommand (args: AkaArgs) {
     }
 }
 
-async function keysCommand (opts: { format: 'hex' | 'json' | 'jwk' }) {
+async function keysCommand (opts:{ format:'hex'|'json'|'jwk' }) {
     const { format } = opts
     const keypair = await Secp256k1Keypair.create({ exportable: true })
 
