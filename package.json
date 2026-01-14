@@ -1,6 +1,6 @@
 {
   "name": "@substrate-system/at",
-  "version": "0.0.4",
+  "version": "0.0.5",
   "description": "At protocol CLI",
   "type": "module",
   "main": "dist/cli.js",
