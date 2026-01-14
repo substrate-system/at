@@ -25,7 +25,10 @@ your [DID document](https://atproto.com/specs/did).
   * [`did` command](#did-command)
     + [Arguments](#arguments)
     + [Example](#example-1)
-  * [Add a Rotation Key](#add-a-rotation-key)
+  * [`rotation` command](#rotation-command)
+    + [Arguments](#arguments-1)
+    + [Example: Add a key](#example-add-a-key)
+    + [Example: Remove a key](#example-remove-a-key)
 - [How it works](#how-it-works)
 
 <!-- tocstop -->
@@ -201,26 +204,65 @@ The audit log returns an array of operations with their CIDs and timestamps:
 ]
 ```
 
-### Add a Rotation Key
+### `rotation` command
+Add or remove a rotation key.
 
-First, find your PDS URL. You can use `at did <yourname.tld>` for this.
-
-```sh
-at did nichoth.com
-
-# ...
-  "service": [
-    {
-      "id": "#atproto_pds",
-      "type": "AtprotoPersonalDataServer",
-      "serviceEndpoint": "https://lionsmane.us-east.host.bsky.network"
-    }
-  ]
+```
+npx at rotation <handle> [key] [--pds <custom-pds>] [--format <format>] [--remove <key-to-remove>]
 ```
 
-I am using `lionsmane.us-east.host.bsky.network`.
+#### Arguments
 
-You **must include your current rotation key in the update**.
+- `<handle>` - Your Bluesky handle (e.g., `alice.bsky.social`)
+- `[key]` - (Optional) The private key (in hex format) for the new rotation key.
+  If not provided, a new keypair will be generated.
+- `--pds` - (Optional) Custom PDS server URL. Defaults to `https://bsky.social`
+- `--format`, `-f` - (Optional) Output format for the generated keypair: `json`
+  (default), `hex`, or `jwk`.
+- `--remove`, `-rm` - (Optional) Remove the given rotation key.
+  Pass the public key in multikey format (e.g., `did:key:z...`) or just
+  the key part (e.g., `z...`).
+
+
+#### Example: Add a key
+
+Generate a new keypair and add it as a rotation key:
+
+```sh
+at rotation alice.bsky.social
+```
+
+This will:
+1. Generate a new secp256k1 keypair
+2. Log in and request email verification
+3. Add the new public key to your DID document's `rotationKeys`
+4. Print the new private key (save this securely!)
+
+You can also provide an existing private key in hex format:
+
+```
+at rotation alice.bsky.social <private-key-hex>
+```
+
+#### Example: Remove a key
+
+Remove an existing rotation key from your account:
+
+```sh
+at rotation alice.bsky.social --remove "did:key:zQ3sh..."
+```
+
+You can also pass just the key part:
+
+```sh
+at rotation alice.bsky.social --remove "zQ3sh..."
+```
+
+This command will:
+1. Log in and request email verification
+2. Fetch the current rotation keys from the PLC directory
+3. Remove the specified key from the list
+4. Update your DID with the new list of rotation keys
 
 
 ## How it works
