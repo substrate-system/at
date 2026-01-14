@@ -236,8 +236,8 @@ test('rotation command shows help with --help flag', async t => {
     const result = await runCLI(['rotation', '--help'])
 
     t.equal(result.code, 0, 'help command should exit with code 0')
-    t.ok(result.stdout.includes('Add a rotation key to a Bluesky account'),
-        'should show command description')
+    t.ok(result.stdout.includes('Add or remove a rotation key to a ' +
+        'Bluesky account'), 'should show command description')
     t.ok(result.stdout.includes('handle'), 'should mention handle parameter')
     t.ok(result.stdout.includes('key'), 'should mention key parameter')
     t.ok(result.stdout.includes('--pds'), 'should mention pds option')
