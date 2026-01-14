@@ -205,7 +205,8 @@ The audit log returns an array of operations with their CIDs and timestamps:
 ```
 
 ### `rotation` command
-Add or remove a rotation key.
+Add or remove a rotation key. This will require you to verify the operation
+by clicking an email.
 
 ```
 npx at rotation <handle> [key] [--pds <custom-pds>] [--format <format>] [--remove <key-to-remove>]
