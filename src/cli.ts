@@ -10,28 +10,28 @@ import chalk from 'chalk'
 import { type DidDocument } from '@atproto/identity'
 
 interface AkaArgs {
-    handle: string;
-    url: string;
-    pds?: string;
+    handle:string;
+    urls:string[];
+    pds?:string;
 }
 
 interface DidArgs {
-    handle: string;
-    pds?: string;
-    log?: boolean;
+    handleOrDid:string;  // handle or DID string
+    pds?:string;
+    log?:boolean;
 }
 
 interface RotationArgs {
-    handle: string;
-    key?: string;
-    pds?: string;
-    format: 'hex' | 'json' | 'jwk';
+    handle:string;
+    key?:string;
+    pds?:string;
+    format:'hex'|'json'|'jwk';
 }
 
 interface RemoveArgs {
-    handle: string;
-    key: string;  // <-- the public key
-    pds?: string;
+    handle:string;
+    key:string;  // <-- the public key
+    pds?:string;
 }
 
 /**
@@ -114,7 +114,7 @@ yargs(hideBin(process.argv))
         },
         async (argv) => {
             try {
-                await keysCommand({ format: argv.format as 'hex' | 'json' | 'jwk' })
+                await keysCommand({ format: argv.format as 'hex'|'json'|'jwk' })
             } catch (error) {
                 console.error(chalk.red.bold('Unexpected error:'), error)
                 process.exit(1)
@@ -131,7 +131,7 @@ yargs(hideBin(process.argv))
                     type: 'string',
                     demandOption: true
                 })
-                .positional('url', {
+                .positional('URL', {
                     describe: 'a URL (e.g., https://github.com/nichoth)',
                     type: 'string',
                     demandOption: true
@@ -143,11 +143,11 @@ yargs(hideBin(process.argv))
                 })
         },
         (argv) => {
-            if (!argv.url) throw new Error('not url')
+            if (!argv.URL) throw new Error('empty url')
 
             akaCommand({
                 handle: argv.handle as string,
-                url: argv.url,
+                urls: (argv.URL as string).split(' '),
                 pds: argv.pds as string
             }).catch((error) => {
                 console.error(chalk.red.bold('Unexpected error:'), error)
@@ -156,12 +156,12 @@ yargs(hideBin(process.argv))
         }
     )
     .command(
-        'did <handle>',
-        'Get the DID document for a given handle',
+        'did <handleOrDid>',
+        'Get the DID document for a given handle or DID',
         (yargs) => {
             return yargs
-                .positional('handle', {
-                    describe: 'A Bluesky handle (e.g., nichoth.com or @nichoth.com)',
+                .positional('handleOrDid', {
+                    describe: 'A Bluesky handle (e.g., nichoth.com) or DID (e.g., did:plc:abc123)',
                     type: 'string',
                     demandOption: true
                 })
@@ -179,7 +179,7 @@ yargs(hideBin(process.argv))
         },
         (argv) => {
             didCommand({
-                handle: argv.handle as string,
+                handleOrDid: argv.handleOrDid as string,
                 pds: argv.pds as string,
                 log: argv.log as boolean
             }).catch((error) => {
@@ -196,20 +196,29 @@ yargs(hideBin(process.argv))
     .strict()
     .parse()
 
-async function didCommand (args: DidArgs): Promise<DidDocument> {
-    let { handle } = args
+async function didCommand (args:DidArgs):Promise<DidDocument> {
+    const { handleOrDid } = args
     const { pds = 'https://bsky.social', log = false } = args
 
     // Strip '@' prefix if present
-    handle = handle.startsWith('@') ? handle.slice(1) : handle
+    const handle = handleOrDid.startsWith('@') ?
+        handleOrDid.slice(1) :
+        handleOrDid
 
     try {
-        // Create an agent (no login needed for public operations)
-        const agent = new AtpAgent({ service: pds })
+        let did:string
 
-        // Resolve handle to DID
-        const response = await agent.resolveHandle({ handle })
-        const did = response.data.did
+        if (handleOrDid.startsWith('did:')) {
+            // Already a DID string, use directly
+            did = handleOrDid
+        } else {
+            // Create an agent (no login needed for public operations)
+            const agent = new AtpAgent({ service: pds })
+
+            // Resolve handle to DID
+            const response = await agent.resolveHandle({ handle })
+            did = response.data.did
+        }
 
         // If log flag is set, fetch and print the audit log
         if (log) {
@@ -252,12 +261,12 @@ async function didCommand (args: DidArgs): Promise<DidDocument> {
     }
 }
 
-async function akaCommand (args: AkaArgs) {
-    const { handle, url, pds = 'https://bsky.social' } = args
+async function akaCommand (args:AkaArgs) {
+    const { handle, urls, pds = 'https://bsky.social' } = args
 
     console.log(chalk.blue(`\nSetting up aka for ${chalk.bold(handle)}`))
     console.log(chalk.gray(`PDS: ${pds}`))
-    console.log(chalk.gray(`URL: ${url}\n`))
+    console.log(chalk.gray(`URLs: ${urls.join(' ')}\n`))
 
     try {
         // Step 1: Login
@@ -291,7 +300,7 @@ async function akaCommand (args: AkaArgs) {
         // Step 4: Sign and submit the PLC operation
         console.log(chalk.cyan('\nStep 4: Signing and submitting PLC operation'))
 
-        const alsoKnownAs = [`at://${handle}`, url]
+        const alsoKnownAs = [`at://${handle}`, ...urls]
 
         const signed = await agent.com.atproto.identity.signPlcOperation({
             token: emailCode.trim(),

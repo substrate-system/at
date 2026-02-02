@@ -118,6 +118,58 @@ test('did command --log shows different output than regular did', async t => {
         'log and regular output should be different')
 })
 
+test('did command accepts a did:plc string directly', async t => {
+    const result = await runCLI(['did', 'did:plc:yvih5ktzfwdwlq3kt2pk7kmc'])
+
+    t.equal(result.code, 0, 'command should exit with code 0')
+
+    try {
+        const didDoc = JSON.parse(result.stdout)
+        t.ok(didDoc.id, 'DID document should have an id field')
+        t.equal(didDoc.id, 'did:plc:yvih5ktzfwdwlq3kt2pk7kmc',
+            'DID document id should match the input DID')
+    } catch (_err) {
+        t.fail('Should output valid JSON DID document')
+    }
+})
+
+test('did command with DID string and --log flag', async t => {
+    const result = await runCLI([
+        'did',
+        'did:plc:yvih5ktzfwdwlq3kt2pk7kmc',
+        '--log'
+    ])
+
+    t.equal(result.code, 0, 'command should exit with code 0')
+
+    try {
+        const log = JSON.parse(result.stdout)
+        t.ok(Array.isArray(log), 'audit log should be an array')
+        if (log.length > 0) {
+            t.ok(log[0].operation, 'log entries should have an operation field')
+        }
+    } catch (_err) {
+        t.fail('Should output valid JSON audit log')
+    }
+})
+
+test('did command with DID string returns same doc as handle', async t => {
+    // First resolve the handle to get its DID
+    const handleResult = await runCLI(['did', 'nichoth.com'])
+    t.equal(handleResult.code, 0, 'handle command should succeed')
+
+    const handleDoc = JSON.parse(handleResult.stdout)
+    const did = handleDoc.id
+
+    // Now fetch directly by DID
+    const didResult = await runCLI(['did', did])
+    t.equal(didResult.code, 0, 'DID command should succeed')
+
+    const didDoc = JSON.parse(didResult.stdout)
+    t.equal(handleDoc.id, didDoc.id,
+        'both should resolve to the same DID document')
+})
+
 // Test the `keys` command
 test('keys command generates a keypair with default hex format', async t => {
     const result = await runCLI(['keys'])

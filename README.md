@@ -100,28 +100,35 @@ at aka alice.example.com https://alice.com --pds https://pds.example.com
 
 ### `did` command
 
-Fetch the DID document for a handle.
+Fetch the DID document for a given handle or DID string.
 
 ```
-npx at did <handle> [--pds <custom-pds>] [--log]
+npx at did <handleOrDid> [--pds <custom-pds>] [--log]
 ```
 
 #### Arguments
 
-- `<handle>` - A Bluesky handle
-  (e.g., `alice.bsky.social` or `@alice.bsky.social`)
+- `<handleOrDid>` - A Bluesky handle
+  (e.g., `alice.bsky.social` or `@alice.bsky.social`) or a DID string
+  (e.g., `did:plc:abc123`)
 - `--pds` - (Optional) Custom PDS server URL for handle resolution.
-  Defaults to `https://bsky.social`
+  Defaults to `https://bsky.social`. Not used when passing a DID directly.
 - `--log`, `-l` - (Optional) Fetch the audit log instead of the DID document.
   Only available for `did:plc:` identifiers, not `did:web`.
 
 
 #### Example
 
-Get a DID document for `@nichoth.com`:
+Get a DID document by handle:
 
 ```sh
 npx at did @nichoth.com
+```
+
+Or pass a DID string directly:
+
+```sh
+npx at did did:plc:s53e6k6sirobjtz5s6vdddwr
 ```
 
 ```js
@@ -183,6 +190,8 @@ Use the `--log` or `-l` flag to fetch the audit log for a DID from the PLC direc
 
 ```sh
 npx at did @nichoth.com --log
+# or
+npx at did did:plc:s53e6k6sirobjtz5s6vdddwr --log
 ```
 
 The audit log returns an array of operations with their CIDs and timestamps:
